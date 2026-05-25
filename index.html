@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Car Configurator</title>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --panel-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #a0a0a0;
+            --accent: #007bff;
+            --accent-hover: #0056b3;
+            --border: #333333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 3D Canvas Container */
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            height: 100%;
+        }
+
+        #loading-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(18, 18, 18, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #loading-overlay h2 {
+            margin-bottom: 10px;
+            font-weight: 400;
+            letter-spacing: 1px;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        /* Sidebar UI */
+        #sidebar {
+            width: 320px;
+            min-width: 320px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            z-index: 20;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 5px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* File Inputs */
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-upload-btn {
+            background-color: transparent;
+            border: 1px dashed var(--border);
+            color: var(--text-main);
+            padding: 12px;
+            text-align: center;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .file-upload-btn:hover {
+            border-color: var(--accent);
+            background-color: rgba(0, 123, 255, 0.1);
+        }
+
+        .ai-gen-btn {
+            border-color: #8a2be2;
+            color: #d8b4fe;
+        }
+
+        .ai-gen-btn:hover {
+            border-color: #a855f7;
+            background-color: rgba(138, 43, 226, 0.1);
+        }
+
+        /* Select Dropdown */
+        select {
+            -webkit-appearance: none;
+            background-color: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            outline: none;
+        }
+        
+        select option {
+            background-color: var(--panel-bg);
+            color: var(--text-main);
+        }
+
+        select:focus {
+            border-color: var(--accent);
+        }
+
+        /* Color Picker */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 100%;
+            height: 40px;
+            border-radius: 6px;
+            cursor: pointer;
+            background: none;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        /* Sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            margin-top: -6px;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        input[type="range"]:focus {
+            outline: none;
+        }
+
+        .value-display {
+            font-size: 0.8rem;
+            color: var(--accent);
+            float: right;
+        }
+
+        .info-text {
+            font-size: 0.75rem;
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #ffaa00;
+            line-height: 1.4;
+        }
+
+    </style>
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <div id="loading-overlay">
+            <h2 id="loading-title">Waiting for Car Model...</h2>
+            <p id="loading-subtitle" style="color: var(--text-muted);">Please upload a .glb or .gltf file via the sidebar.</p>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <h1>Configurator</h1>
+
+        <div class="info-text">
+            Check the browser console (F12) to inspect the loaded GLTF hierarchy and mesh names!
+        </div>
+
+        <div class="control-group">
+            <label>Environment</label>
+            <select id="env-toggle">
+                <option value="night">Night (Moon)</option>
+                <option value="day">Day (Sun)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Load Car Model (.glb)</label>
+            <label for="car-upload" class="file-upload-btn" id="car-upload-label">
+                + Select Car File
+            </label>
+            <input type="file" id="car-upload" accept=".glb,.gltf">
+        </div>
+
+        <div class="control-group">
+            <label>Load Custom Wheels (.glb)</label>
+            <label for="wheel-upload" class="file-upload-btn" id="wheel-upload-label">
+                + Select Wheel File
+            </label>
+            <input type="file" id="wheel-upload" accept=".glb,.gltf">
+        </div>
+
+        <div class="control-group">
+            <label style="color: #d8b4fe;">AI Gen Wheel (Image)</label>
+            <label for="ai-wheel-upload" class="file-upload-btn ai-gen-btn" id="ai-wheel-upload-label">
+                ✨ Upload Wheel Image
+            </label>
+            <input type="file" id="ai-wheel-upload" accept="image/png, image/jpeg">
+        </div>
+
+        <div class="control-group">
+            <label>Car Paint</label>
+            <input type="color" id="color-picker" value="#ff0000">
+        </div>
+
+        <div class="control-group">
+            <label>Ride Height <span class="value-display" id="ride-height-val">0.0</span></label>
+            <input type="range" id="ride-height" min="-0.5" max="0.5" step="0.01" value="0">
+        </div>
+
+        <div class="control-group">
+            <label>Wheel Offset <span class="value-display" id="wheel-offset-val">0.0</span></label>
+            <input type="range" id="wheel-offset" min="-0.2" max="0.2" step="0.01" value="0">
+        </div>
+
+        <div class="control-group">
+            <label>Wheel Scale <span class="value-display" id="wheel-scale-val">1.0</span></label>
+            <input type="range" id="wheel-scale" min="0.5" max="2.0" step="0.05" value="1.0">
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- GLOBAL VARIABLES ---
+        let scene, camera, renderer, controls;
+        let carModel = null;
+        let originalWheels = [];
+        let customWheelInstances = [];
+        let paintMaterials = new Set();
+        
+        // Lighting Variables
+        let hemiLight, dirLight, fillLight, rimLight, streetLight;
+        
+        // Configuration state
+        const configState = {
+            environment: 'night',
+            baseRideHeight: 0,
+            rideHeightOffset: 0,
+            wheelOffset: 0,
+            wheelScale: 1.0,
+            paintColor: 0xff0000
+        };
+
+        const canvasContainer = document.getElementById('canvas-container');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingTitle = document.getElementById('loading-title');
+        const loadingSubtitle = document.getElementById('loading-subtitle');
+
+        // --- INITIALIZATION ---
+        init();
+        animate();
+
+        function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+            scene.fog = new THREE.Fog(0x1a1a1a, 10, 50);
+
+            // 2. Camera Setup
+            camera = new THREE.PerspectiveCamera(45, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 100);
+            camera.position.set(4, 2, -5);
+
+            // 3. Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            canvasContainer.appendChild(renderer.domElement);
+
+            // 4. Orbit Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera from going below ground
+            controls.minDistance = 2;
+            controls.maxDistance = 15;
+
+            // 5. Lighting (Studio Setup)
+            setupLighting();
+
+            // 6. Environment (Shadow Plane & Time of Day)
+            setupEnvironment();
+            updateEnvironment(configState.environment);
+
+            // 7. Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            setupUIHandlers();
+        }
+
+        function setupLighting() {
+            // Hemisphere light for ambient base
+            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+            hemiLight.position.set(0, 20, 0);
+            scene.add(hemiLight);
+
+            // Main Key Light (Directional / Sun or Moon)
+            dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            dirLight.position.set(5, 10, 7);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 25;
+            dirLight.shadow.camera.left = -5;
+            dirLight.shadow.camera.right = 5;
+            dirLight.shadow.camera.top = 5;
+            dirLight.shadow.camera.bottom = -5;
+            dirLight.shadow.bias = -0.001;
+            scene.add(dirLight);
+
+            // Fill Light (Directional, softer, no shadows)
+            fillLight = new THREE.DirectionalLight(0xaaccff, 1.0);
+            fillLight.position.set(-5, 3, -5);
+            scene.add(fillLight);
+
+            // Rim Light (Directional to highlight edges)
+            rimLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            rimLight.position.set(0, 5, -10);
+            scene.add(rimLight);
+
+            // Street Light (Spotlight for Night Mode)
+            streetLight = new THREE.SpotLight(0xffbbaa, 0); // Warm orange/yellow, initially off
+            streetLight.position.set(3, 7, 3);
+            streetLight.target.position.set(0, 0, 0);
+            streetLight.angle = Math.PI / 3;
+            streetLight.penumbra = 0.5;
+            streetLight.decay = 2.0;
+            streetLight.distance = 30;
+            streetLight.castShadow = true;
+            streetLight.shadow.mapSize.width = 1024;
+            streetLight.shadow.mapSize.height = 1024;
+            streetLight.shadow.bias = -0.001;
+            scene.add(streetLight);
+            scene.add(streetLight.target);
+        }
+
+        function setupEnvironment() {
+            // Invisible plane to catch shadows
+            const planeGeometry = new THREE.PlaneGeometry(100, 100);
+            const planeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1a1a,
+                roughness: 0.1,
+                metalness: 0.0
+            });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = -Math.PI / 2;
+            plane.receiveShadow = true;
+            scene.add(plane);
+            
+            // Grid helper for scale reference
+            const grid = new THREE.GridHelper(20, 40, 0x000000, 0x000000);
+            grid.material.opacity = 0.2;
+            grid.material.transparent = true;
+            scene.add(grid);
+        }
+
+        function updateEnvironment(timeOfDay) {
+            if (timeOfDay === 'day') {
+                // Bright Sky Mode
+                scene.background.setHex(0x87CEEB); // Sky blue
+                scene.fog.color.setHex(0x87CEEB);
+                
+                hemiLight.color.setHex(0xffffff);
+                hemiLight.groundColor.setHex(0xe0e0e0);
+                hemiLight.intensity = 0.8;
+
+                dirLight.color.setHex(0xffffee); // Warm Sun
+                dirLight.intensity = 1.5; // Reduced from 3.0 (less harsh)
+                dirLight.position.set(15, 25, 15); // Moved further out and higher
+
+                fillLight.color.setHex(0xddddff); // Soft ambient fill
+                fillLight.intensity = 0.8;
+
+                rimLight.color.setHex(0xffffff);
+                rimLight.intensity = 0.5;
+
+                streetLight.intensity = 0; // Turn off streetlight
+            } else {
+                // Dark Studio / Night Mode
+                scene.background.setHex(0x1a1a1a); // Dark grey
+                scene.fog.color.setHex(0x1a1a1a);
+                
+                hemiLight.color.setHex(0x222233);
+                hemiLight.groundColor.setHex(0x111111);
+                hemiLight.intensity = 0.2; // Dim ambient for night
+
+                dirLight.color.setHex(0xaaccff); // Cool Moon
+                dirLight.intensity = 0.2; // Very dim moon
+                dirLight.position.set(-10, 15, -10);
+
+                fillLight.color.setHex(0x111122); // Very dark blue fill
+                fillLight.intensity = 0.2;
+
+                rimLight.color.setHex(0xccccff);
+                rimLight.intensity = 0.5;
+
+                streetLight.intensity = 40.0; // Turn on strong, warm streetlight
+            }
+        }
+
+        // --- HIERARCHY LOGGING (Expertise Requirement) ---
+        function logGLTFHierarchy(object, depth = 0) {
+            const indent = '  '.repeat(depth);
+            const type = object.type;
+            const hasGeometry = object.geometry ? `(Verts: ${object.geometry.attributes.position.count})` : '';
+            const materialInfo = object.material ? `[Mat: ${object.material.name}]` : '';
+            
+            console.log(`%c${indent}└─ ${object.name || 'Unnamed'} %c[${type}] ${hasGeometry} ${materialInfo}`, 'color: #00ff00;', 'color: #888888;');
+            
+            if (object.children && object.children.length > 0) {
+                object.children.forEach(child => logGLTFHierarchy(child, depth + 1));
+            }
+        }
+
+        // --- MODEL LOADING & PROCESSING ---
+
+        function loadModelFile(file, isWheel = false) {
+            const url = URL.createObjectURL(file);
+            const loader = new GLTFLoader();
+
+            loadingOverlay.classList.remove('hidden');
+            loadingTitle.innerText = isWheel ? 'Loading Wheels...' : 'Loading Car...';
+            loadingSubtitle.innerText = 'Parsing 3D data...';
+
+            loader.load(url, (gltf) => {
+                if (isWheel) {
+                    processWheelModel(gltf.scene);
+                } else {
+                    processCarModel(gltf.scene);
+                }
+                
+                URL.revokeObjectURL(url); // Clean up memory
+                loadingOverlay.classList.add('hidden');
+            }, undefined, (error) => {
+                console.error(error);
+                alert('Error loading model. Check console.');
+                loadingOverlay.classList.add('hidden');
+            });
+        }
+
+        // --- AI IMAGE TO 3D GENERATION INTEGRATION ---
+
+        async function generateWheelFromImage(file) {
+            // 1. Update UI to show generation state
+            loadingOverlay.classList.remove('hidden');
+            loadingTitle.innerText = '✨ AI Generating 3D Wheel Model...';
+            loadingSubtitle.innerText = 'This may take a few moments. Please hold on.';
+
+            try {
+                // =========================================================================
+                // ⚠️ USER TODO: REPLACE THIS BLOCK WITH YOUR ACTUAL GENERATIVE 3D API CALL
+                // =========================================================================
+                
+                /* --- EXAMPLE IMPLEMENTATION ---
+                const formData = new FormData();
+                formData.append('image', file);
+                
+                // Optional: You might need a polling structure if the API is asynchronous
+                const response = await fetch('https://api.your-3d-ai-provider.com/v1/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer YOUR_SECRET_API_KEY'
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.statusText}`);
+                }
+                
+                // Assuming the API returns the binary GLB file directly as a Blob:
+                const generatedGlbBlob = await response.blob(); 
+                --------------------------------*/
+
+                // MOCK DELAY: Simulating 3 seconds of AI generation time...
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // MOCK BLOB: We use a minimal valid JSON GLTF structure here so Three.js 
+                // parses it successfully instead of throwing a SyntaxError.
+                const minimalGltf = JSON.stringify({
+                    asset: { version: "2.0" },
+                    scenes: [{ nodes: [0] }],
+                    nodes: [{ name: "MockAI_Wheel_Mesh" }],
+                    scene: 0
+                });
+                const generatedGlbBlob = new Blob([minimalGltf], { type: 'application/json' });
+                
+                // =========================================================================
+
+                // 2. Convert the Blob into an Object URL
+                const blobUrl = URL.createObjectURL(generatedGlbBlob);
+
+                // 3. Pass the generated .glb URL directly into our existing processing pipeline
+                const loader = new GLTFLoader();
+                loader.load(
+                    blobUrl,
+                    (gltf) => {
+                        // Success Pipeline
+                        processWheelModel(gltf.scene);
+                        URL.revokeObjectURL(blobUrl);
+                        loadingOverlay.classList.add('hidden');
+                        alert("Mock Generation Complete!\n\nA placeholder (invisible) wheel structure was loaded successfully without errors. To view a real 3D wheel, replace the mock code in generateWheelFromImage() with your actual Generative AI API fetch code.");
+                    },
+                    undefined, 
+                    (error) => {
+                        // Error Pipeline
+                        console.error("GLTFLoader could not parse the generated Blob:", error);
+                        alert("Failed to parse the generated 3D model.");
+                        URL.revokeObjectURL(blobUrl);
+                        loadingOverlay.classList.add('hidden');
+                    }
+                );
+
+            } catch (error) {
+                console.error("AI Generation Error:", error);
+                alert("Failed to generate 3D model from image. Check console for details.");
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+
+        function processCarModel(sceneObj) {
+            if (carModel) scene.remove(carModel); // Remove old car
+            
+            // Clean state
+            originalWheels = [];
+            paintMaterials.clear();
+            removeCustomWheels();
+
+            carModel = sceneObj;
+
+            // Log Hierarchy for debugging
+            console.log("%c========================================", "color: #ffaa00; font-weight: bold;");
+            console.log("%cCAR GLTF HIERARCHY LOADED", "color: #ffaa00; font-size: 14px; font-weight: bold;");
+            console.log("%cUse these names to identify parts if automatic detection fails.", "color: #ffaa00;");
+            console.log("%c========================================", "color: #ffaa00; font-weight: bold;");
+            logGLTFHierarchy(carModel);
+
+            // Setup shadows and analyze model
+            carModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+
+                    // EXPERT LOGIC: Heuristic to find materials to paint
+                    // Skips glass, wheels, tires, lights, badges based on common naming conventions
+                    const matName = child.material.name ? child.material.name.toLowerCase() : '';
+                    const meshName = child.name ? child.name.toLowerCase() : '';
+                    
+                    const isGlass = matName.includes('glass') || meshName.includes('glass') || matName.includes('window');
+                    const isWheel = matName.includes('wheel') || meshName.includes('wheel') || matName.includes('tire') || matName.includes('rim');
+                    const isChrome = matName.includes('chrome') || matName.includes('metal') || matName.includes('trim');
+                    const isLight = matName.includes('light') || meshName.includes('light') || matName.includes('lamp');
+                    
+                    // If it doesn't look like an excluded part, add to paint materials
+                    if (!isGlass && !isWheel && !isChrome && !isLight) {
+                        // Clone material so we don't accidentally modify shared textures/materials inappropriately
+                        child.material = child.material.clone();
+                        paintMaterials.add(child.material);
+                    }
+                }
+
+                // Heuristic to find wheel nodes (commonly named wheel_fl, wheel_fr, etc.)
+                const nodeName = child.name.toLowerCase();
+                if (nodeName.includes('wheel') && !nodeName.includes('steer')) {
+                    // Make sure we only grab root wheel nodes, not sub-meshes of a wheel
+                    if (child.parent && !child.parent.name.toLowerCase().includes('wheel')) {
+                        originalWheels.push({
+                            node: child,
+                            originalPosition: child.position.clone()
+                        });
+                    }
+                }
+            });
+
+            // Center and scale the car automatically to fit the view
+            const box = new THREE.Box3().setFromObject(carModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            
+            // Normalize scale (make max dimension roughly 4 units)
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scaleFactor = 4 / maxDim;
+            carModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            
+            // Recompute bounding box after scale
+            box.setFromObject(carModel);
+            
+            // Place car so its bottom touches y=0
+            carModel.position.x = -center.x * scaleFactor;
+            carModel.position.z = -center.z * scaleFactor;
+            carModel.position.y = (carModel.position.y - box.min.y);
+            
+            configState.baseRideHeight = carModel.position.y;
+            
+            scene.add(carModel);
+            
+            // Apply initial config
+            updatePaintColor();
+            updateSuspensionAndWheels();
+            
+            // Adjust camera to look at car
+            controls.target.set(0, size.y * scaleFactor / 2, 0);
+            controls.update();
+
+            console.log(`%cDetected ${originalWheels.length} wheel nodes.`, "color: #00aaff; font-weight: bold;");
+            console.log(`%cDetected ${paintMaterials.size} paintable materials.`, "color: #00aaff; font-weight: bold;");
+        }
+
+        function processWheelModel(sceneObj) {
+            if (!carModel || originalWheels.length === 0) {
+                alert("Please load a car model with identifiable wheels first!");
+                return;
+            }
+
+            console.log("%c========================================", "color: #00ffaa; font-weight: bold;");
+            console.log("%cWHEEL GLTF HIERARCHY LOADED", "color: #00ffaa; font-size: 14px; font-weight: bold;");
+            console.log("%c========================================", "color: #00ffaa; font-weight: bold;");
+            logGLTFHierarchy(sceneObj);
+
+            removeCustomWheels();
+
+            // Setup shadows for custom wheel
+            sceneObj.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            // Hide original wheels and attach instances of the new wheel
+            originalWheels.forEach((wheelData, index) => {
+                wheelData.node.visible = false; // Hide original
+
+                // Clone the new wheel model for each corner
+                const wheelClone = sceneObj.clone();
+                
+                // Add custom wheel to the parent of the original wheel so it inherits suspension/steering
+                wheelData.node.parent.add(wheelClone);
+                
+                // Copy position and rotation of original wheel
+                wheelClone.position.copy(wheelData.originalPosition);
+                wheelClone.rotation.copy(wheelData.node.rotation);
+
+                // If it's a right-side wheel, we usually need to rotate it 180 deg to face outward
+                // (assuming wheel model is modeled for the left side)
+                const isRightSide = wheelData.originalPosition.x < 0; 
+                if (isRightSide) {
+                    wheelClone.rotation.y += Math.PI; 
+                }
+
+                customWheelInstances.push({
+                    node: wheelClone,
+                    basePos: wheelData.originalPosition.clone(),
+                    isRight: isRightSide
+                });
+            });
+
+            updateSuspensionAndWheels();
+        }
+
+        function removeCustomWheels() {
+            customWheelInstances.forEach(instance => {
+                if(instance.node.parent) {
+                    instance.node.parent.remove(instance.node);
+                }
+            });
+            customWheelInstances = [];
+            
+            // Unhide original wheels
+            originalWheels.forEach(data => {
+                data.node.visible = true;
+            });
+        }
+
+
+        // --- CONFIGURATION LOGIC ---
+
+        function updatePaintColor() {
+            const color = new THREE.Color(configState.paintColor);
+            paintMaterials.forEach(mat => {
+                mat.color.copy(color);
+            });
+        }
+
+        function updateSuspensionAndWheels() {
+            if (!carModel) return;
+
+            // 1. Ride Height logic
+            // True ride height drops the car body but keeps wheels locked to the ground.
+            // If we move the carModel down, we must move the wheels UP in local space to compensate.
+            carModel.position.y = configState.baseRideHeight + configState.rideHeightOffset;
+
+            const activeWheels = customWheelInstances.length > 0 ? customWheelInstances : 
+                originalWheels.map(w => ({
+                    node: w.node, 
+                    basePos: w.originalPosition, 
+                    isRight: w.originalPosition.x < 0 
+                }));
+
+            activeWheels.forEach(wheelData => {
+                // Adjust Y to counter the car's body drop (keeps wheels on floor)
+                // If ride height drops (negative value), we push the wheel UP relative to the car
+                const counterYOffset = -configState.rideHeightOffset / carModel.scale.y; 
+                
+                // Adjust X for Wheel Offset (stance)
+                // Left wheels positive X means out, Right wheels negative X means out.
+                const offsetDirection = wheelData.isRight ? -1 : 1;
+                const localXOffset = configState.wheelOffset * offsetDirection;
+
+                wheelData.node.position.set(
+                    wheelData.basePos.x + localXOffset,
+                    wheelData.basePos.y + counterYOffset,
+                    wheelData.basePos.z
+                );
+
+                // Apply Scale
+                wheelData.node.scale.setScalar(configState.wheelScale);
+            });
+        }
+
+        // --- UI HANDLERS ---
+        function setupUIHandlers() {
+            // Environment Toggle
+            document.getElementById('env-toggle').addEventListener('change', (e) => {
+                configState.environment = e.target.value;
+                updateEnvironment(configState.environment);
+            });
+
+            // Car Upload
+            document.getElementById('car-upload').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    document.getElementById('car-upload-label').innerText = `✓ ${file.name}`;
+                    loadModelFile(file, false);
+                }
+            });
+
+            // Standard Wheel Upload
+            document.getElementById('wheel-upload').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    document.getElementById('wheel-upload-label').innerText = `✓ ${file.name}`;
+                    loadModelFile(file, true);
+                }
+            });
+
+            // AI Image-to-3D Wheel Upload
+            document.getElementById('ai-wheel-upload').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    document.getElementById('ai-wheel-upload-label').innerText = `✨ Generating...`;
+                    await generateWheelFromImage(file);
+                    // Reset label post-generation
+                    document.getElementById('ai-wheel-upload-label').innerText = `✨ Upload Wheel Image`;
+                    // Clear the input so the same file can trigger generation again if needed
+                    e.target.value = ''; 
+                }
+            });
+
+            // Color Picker
+            document.getElementById('color-picker').addEventListener('input', (e) => {
+                configState.paintColor = e.target.value;
+                updatePaintColor();
+            });
+
+            // Ride Height Slider
+            const rhSlider = document.getElementById('ride-height');
+            const rhVal = document.getElementById('ride-height-val');
+            rhSlider.addEventListener('input', (e) => {
+                configState.rideHeightOffset = parseFloat(e.target.value);
+                rhVal.innerText = configState.rideHeightOffset.toFixed(2);
+                updateSuspensionAndWheels();
+            });
+
+            // Wheel Offset Slider
+            const woSlider = document.getElementById('wheel-offset');
+            const woVal = document.getElementById('wheel-offset-val');
+            woSlider.addEventListener('input', (e) => {
+                configState.wheelOffset = parseFloat(e.target.value);
+                woVal.innerText = configState.wheelOffset.toFixed(2);
+                updateSuspensionAndWheels();
+            });
+
+            // Wheel Scale Slider
+            const wsSlider = document.getElementById('wheel-scale');
+            const wsVal = document.getElementById('wheel-scale-val');
+            wsSlider.addEventListener('input', (e) => {
+                configState.wheelScale = parseFloat(e.target.value);
+                wsVal.innerText = configState.wheelScale.toFixed(2);
+                updateSuspensionAndWheels();
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
